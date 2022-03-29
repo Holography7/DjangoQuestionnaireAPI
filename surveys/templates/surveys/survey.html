@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    {% if survey and survey.date_end > datetime %}
+        <p>survey.name={{ survey.name }}</p>
+        <p>survey.description={{ survey.description }}</p>
+        {% for question in questions %}
+            <p>{{ question.question }}</p>
+            {% if question.answers %}
+                {% for answer in question.answers.all %}
+                    <p>{{ answer.answer }}</p>
+                {% endfor %}
+            {% else %}
+                <!-- Text field here -->
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p>Survey not found</p>
+    {% endif %}
+</body>
+</html>
