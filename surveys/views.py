@@ -11,5 +11,5 @@ def survey_view(request, survey_id):
     else:
         questions = []
     context = {'survey': survey, 'questions': questions,
-               'datetime': datetime.now().strftime('%B %d, %Y, %I{} %p'.format(':%M' if datetime.now().minute else ''))}
+               'survey_outdated': survey.date_end.timestamp() < datetime.now().timestamp()}
     return render(request, 'surveys/survey.html', context)
