@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+{% for survey in survey_list %}
+    <a href="{% url 'survey:survey' survey.id %}">{{ survey.name }}</a>
+{% endfor %}
+</body>
+</html>
