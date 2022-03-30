@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <form action="{% url 'users:login' %}" method="post">
+        {% csrf_token %}
+        <fieldset>
+            {% if error_message %}<p><strong>{{ error_message }}</strong></p>{% endif %}
+            <label for="username">Login</label>
+            <input type="text" name="username" id="username" value=""><br>
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password" value=""><br>
+            <input type="submit" value="Sign in">
+        </fieldset>
+    </form>
+<a href="{% url 'users:registration' %}">Registration</a>
+</body>
+</html>

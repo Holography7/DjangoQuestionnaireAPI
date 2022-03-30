@@ -5,6 +5,24 @@
     <title>Title</title>
 </head>
 <body>
-
+    <form action="{% url 'users:registration' %}" method="post">
+        {% csrf_token %}
+        <fieldset>
+            {% if error_messages %}<div>{{ error_messages }}</div>{% endif %}
+            <label for="username">Username</label>
+            <input type="text" name="username"value=""><br>
+            <label for="first_name">First name</label>
+            <input type="text" name="first_name" value=""><br>
+            <label for="last_name">Last name</label>
+            <input type="text" name="last_name" value=""><br>
+            <label for="email">Email</label>
+            <input type="email" name="email" value=""><br>
+            <label for="password1">Password</label>
+            <input type="password" name="password1"value=""><br>
+            <label for="password2">Confirm password</label>
+            <input type="password" name="password2"value=""><br>
+            <input type="submit" value="Register">
+        </fieldset>
+    </form>
 </body>
 </html>

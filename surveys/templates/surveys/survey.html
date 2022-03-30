@@ -5,6 +5,7 @@
     <title>Title</title>
 </head>
 <body>
+    <a href="{% url 'users:login' %}">Login</a>
     {% if survey and not survey_outdated %}
         <p>survey.name={{ survey.name }}</p>
         <p>survey.description={{ survey.description }}</p>

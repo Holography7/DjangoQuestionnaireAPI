@@ -5,10 +5,13 @@
   <title>Title</title>
 </head>
 <body>
+  <p>Username: {{ user.username }}</p>
+  <p>Firstname: {{ user.first_name }}</p>
+  <p>Lastname: {{ user.last_name }}</p>
+  <p>Email: {{ user.email }}</p>
+  <p>Image: {{ user.image }}</p>
+  <p>Completed surveys: {{ user.username }}</p>
+  <a href="{% url 'users:logout' %}">Logout</a>
   <!-- There must be main information of user and completed surveys -->
-  <p>Username</p>
-  <p>Firstname</p>
-  <p>Lastname</p>
-  <p>Email</p>
 </body>
 </html>
