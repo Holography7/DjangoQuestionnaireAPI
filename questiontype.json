@@ -1,1 +1,1 @@
-[{"model": "surveys.questiontype", "pk": 1, "fields": {"type": "Текстовый"}}, {"model": "surveys.questiontype", "pk": 2, "fields": {"type": "С 1 вариантом ответа"}}, {"model": "surveys.questiontype", "pk": 3, "fields": {"type": "С несколькими вариантами ответа"}}]
+[{"model": "surveys.questiontype", "pk": 1, "fields": {"type": "Text"}}, {"model": "surveys.questiontype", "pk": 2, "fields": {"type": "Radio"}}, {"model": "surveys.questiontype", "pk": 3, "fields": {"type": "Checkbox"}}]

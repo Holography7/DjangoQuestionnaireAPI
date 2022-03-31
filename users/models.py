@@ -5,13 +5,13 @@ from surveys.models import Survey, Question, AnswersVariants
 
 
 class User(AbstractUser):
-    image = models.ImageField(upload_to='users_images', blank=True)
+    completed_surveys = models.ManyToManyField(Survey, blank=True)
 
 
 class UserAnswer(models.Model):
     survey = models.ManyToManyField(Survey, blank=True)
-    question = models.ManyToManyField(Question)
-    user = models.ForeignKey(User, on_delete=models.PROTECT)
-    user_anonymous = models.BooleanField(default=False)
+    question = models.ForeignKey(Question, on_delete=models.PROTECT, default=0)
+    user = models.ForeignKey(User, on_delete=models.PROTECT, blank=True)
+    user_anonymous_id = models.PositiveIntegerField(default=0)
     answer_text = models.TextField(blank=True)
-    answer_choose = models.ManyToManyField(AnswersVariants)
+    answer_choose = models.ManyToManyField(AnswersVariants, blank=True)
