@@ -1,11 +1,11 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
-from surveys.serializes import SurveySerializer, QuestionSerializer, AnswerSerializer
-from users.models import UserAnswer, User
+from surveys.models import Survey, Question, AnswersVariants
+from users.models import UserAnswer, User, AnonymousUserAnswer, UserStatusInSurveys
 
 
-class UserSerializer(serializers.ModelSerializer):
+class UserRegistrationSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
         required=True,
         validators=[UniqueValidator(queryset=User.objects.all())]
@@ -16,7 +16,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'username', 'email', 'password', 'password2')
+        fields = ('first_name', 'last_name', 'username', 'email', 'age', 'password', 'password2')
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
@@ -29,7 +29,8 @@ class UserSerializer(serializers.ModelSerializer):
             username=validated_data['username'],
             email=validated_data['email'],
             first_name=validated_data['first_name'],
-            last_name=validated_data['last_name']
+            last_name=validated_data['last_name'],
+            age=validated_data['age']
         )
 
         user.set_password(validated_data['password'])
@@ -38,12 +39,43 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 
+class UserStatusInSurveysSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = UserStatusInSurveys
+        fields = ('user', 'survey', 'completed')
+
+
+class UserCompleteSurveySerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = ('completed_surveys',)
+
+
 class UserAnswerSerializer(serializers.ModelSerializer):
-    survey = SurveySerializer(many=True)
-    question = QuestionSerializer()
-    user = UserSerializer()
-    answer_choose = AnswerSerializer(many=True, allow_null=True)
 
     class Meta:
         model = UserAnswer
-        fields = ('survey', 'question', 'user', 'user_anonymous_id', 'answer_text', 'answer_choose')
+        fields = ('survey', 'question', 'user', 'answer_text', 'answer_choose')
+
+
+class AnonymousUserAnswerSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = AnonymousUserAnswer
+        fields = ('survey', 'question', 'user_anonymous_id', 'answer_text', 'answer_choose')
+
+
+class QuestionForUserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = UserAnswer
+        fields = ('question', 'answer_text', 'answer_choose')
+
+
+class UserAnswerShortSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = UserAnswer
+        fields = ('question', 'answer_text', 'answer_choose')

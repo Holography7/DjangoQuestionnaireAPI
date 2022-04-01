@@ -1,0 +1,6 @@
+- Completed rework with Django REST API
+- Rework POST for answer to question,
+- Created views for getting active and completed surveys, answers to questions for each survey and complete survey
+- Added PATCH request for changing answers
+- Added POST request for activating survey
+- Probably statuses 20X must not be using this way
