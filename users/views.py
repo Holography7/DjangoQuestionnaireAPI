@@ -5,12 +5,13 @@ from rest_framework import status
 
 from surveys.serializes import SurveySerializer
 from surveys.models import Survey
-from users.models import User, UserStatusInSurveys, UserAnswer
+from users.models import UserStatusInSurveys, UserAnswer
 from users.serializes import UserRegistrationSerializer, UserAnswerShortSerializer
 
 
 @api_view(['GET'])
 def api_active_surveys(request):
+    """Returns list of active surveys for this user. Allows only for registered user."""
     if request.method == 'GET':
         user = request.user
         if user.is_authenticated:
@@ -28,6 +29,7 @@ def api_active_surveys(request):
 
 @api_view(['POST'])
 def api_registration(request):
+    """Use this POST request for user registration."""
     if request.method == 'POST':
         if request.user.is_authenticated:
             return Response({"user_is_authenticated": True}, status=status.HTTP_208_ALREADY_REPORTED)
@@ -41,6 +43,7 @@ def api_registration(request):
 
 @api_view(['GET'])
 def api_completed_surveys(request):
+    """Returns list of completed surveys for this user. Allows only for registered user."""
     if request.method == 'GET':
         user = request.user
         if user.is_authenticated:
@@ -58,6 +61,7 @@ def api_completed_surveys(request):
 
 @api_view(['GET'])
 def api_survey_answers(request, pk):
+    """Returns list of answers to questions for concrete survey (using id). Allows only for registered user."""
     if request.method == 'GET':
         user = request.user
         if user.is_authenticated:
@@ -73,9 +77,9 @@ def api_survey_answers(request, pk):
             return Response({"user": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
 
 
-
 @api_view(['POST'])
 def api_login(request):
+    """Use this POST request for login."""
     if request.method == 'POST':
         if request.user.is_authenticated:
             return Response({"user": "already authenticated"},
@@ -91,9 +95,10 @@ def api_login(request):
                             status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['GET'])
+@api_view(['POST'])
 def api_logout(request):
-    if request.method == 'GET':
+    """Use this POST request for logout. POST should be empty (but with user information)"""
+    if request.method == 'POST':
         if request.user.is_authenticated:
             auth.logout(request)
             return Response({"user": "logouted"}, status=status.HTTP_202_ACCEPTED)

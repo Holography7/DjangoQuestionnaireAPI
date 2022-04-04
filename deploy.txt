@@ -1,0 +1,46 @@
+Linux:
+1. Install packages from requirements.txt:
+python -m pip install -r requirements.txt
+2. Create a folder for server
+3. Clone this repository:
+git clone <repository-url>
+If repository changes, you can update your copy:
+git pull
+4. Change file questionnaire/settings.py:
+- Insert secrete keys and passwords to environment variables
+- Set Debug = False
+- Add your domain into ALLOWED_HOSTS
+- Add string after BASE_DIR:
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+5. Make migrations:
+python manage.py makemigrations
+python manage.py migrate
+python manage.py collectstatic
+6. Import data to DB:
+python manage.py loaddata questiontype.json
+python manage.py loaddata groups.json
+7. Create superuser for your project:
+python manage.py createsuperuser
+Enter username, email (could be passed) and password 2 times.
+8. Install Nginx:
+sudo apt install nginx
+9. Change configure file Nginx:
+cd /etc/nginx/sites-enabled/
+sudo nano default
+- Find location / parameter and change not comment string to:
+proxy_pass http://0.0.0.0:9000
+- After that parameter add new:
+location /static/ {
+    alias way/to/your/static/files/directory/;
+}
+Press Ctrl+S to save file and Ctrl+X to close it.
+10. Run Nginx:
+sudo service nginx start
+If you need to restart or stop:
+sudo service nginx restart
+sudo service nginx stop
+11. Install gunicorn:
+pip install gunicorn
+Relocate to your folder with project and run gunicorn:
+gunicorn ProjectName.wsgi:application --bind 0.0.0.0:9000
+If you want to stop server, press Ctrl+C.
