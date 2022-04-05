@@ -1,63 +1,189 @@
 from datetime import datetime
+import pytz
 from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
+from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, UpdateAPIView
+from rest_framework.exceptions import PermissionDenied, ParseError, NotAuthenticated
 
 
-from surveys.models import Survey
+from surveys.models import Survey, Question
 from surveys.serializes import SurveySerializer, QuestionSerializer
-from users.models import UserAnswer, AnonymousUserAnswer, UserStatusInSurveys
+from users.models import UserAnswer, AnonymousUserAnswer, UserStatusInSurveys, AnonymousUserStatusInSurveys
 from users.serializes import UserAnswerSerializer, AnonymousUserAnswerSerializer, UserStatusInSurveysSerializer
+from users.serializes import AnonymousUserStatusInSurveysSerializer, CompleteSurveySerializer
 
 
-@api_view(['GET'])
-def api_surveys_list(request):
-    """Returns list with surveys that currently is available (not outdated)."""
-    if request.method == 'GET':
-        surveys = Survey.objects.filter(date_end__gt=datetime.now())
-        serializer = SurveySerializer(surveys, many=True)
-        return Response(serializer.data)
+class SurveyListAPIView(ListAPIView):
+    """Returns list of active (not outdated) surveys."""
+    serializer_class = SurveySerializer
+
+    def get_queryset(self):
+        return Survey.objects.filter(date_end__gt=pytz.UTC.localize(datetime.now()))
 
 
-@api_view(['GET', 'POST'])
-def api_survey(request, pk):
-    """GET request returns information about survey. You can get survey id from /survey/api/surveys.
+class SurveyAPIView(RetrieveAPIView):
+    """Returns information about survey. You can get survey id from api/survey/list/ ."""
+    serializer_class = SurveySerializer
 
-    POST request using to begin survey so no parameters need to send (but user information still required).
-    If user is anonymous, don't forget to get from server answer field user_anonymous_id and save it for user somewhere:
-    this id is required to send answers for this anonymous user."""
-    if request.method == 'GET':
-        survey = get_object_or_404(Survey, pk=pk)
-        if survey.date_end.timestamp() > datetime.now().timestamp():
-            serializer = SurveySerializer(survey)
-            data = serializer.data
-            data.update({"questions_count": survey.questions.all().count()})
-            return Response(data)
+    def get_queryset(self):
+        self.queryset = Survey.objects.filter(id=self.kwargs['pk'])
+        if self.queryset[0].date_end > pytz.UTC.localize(datetime.now()):
+            return self.queryset
         else:
-            return Response({"survey": "outdated"},
-                            status=status.HTTP_423_LOCKED)
-    elif request.method == 'POST':
-        user = request.user
-        survey = get_object_or_404(Survey, pk=pk)
-        if not user or not user.is_active:
-            if AnonymousUserAnswer.objects.all():
-                user_anonymous_id = AnonymousUserAnswer.objects.aggregate(Max('user_anonymous_id'))
-                user_anonymous_id['user_anonymous_id'] += 1
+            raise PermissionDenied(detail='This survey is outdated')
+
+
+class QuestionsListAPIView(ListAPIView):
+    """Returns list of questions from survey.
+
+    Remember that you cannot get access there if survey outdated, user not send POST to api/survey/<int:id>/start/ to
+    start survey or already complete this survey."""
+    serializer_class = QuestionSerializer
+
+    def get_queryset(self):
+        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        if survey.date_end < pytz.UTC.localize(datetime.now()):
+            raise PermissionDenied(detail='This survey is outdated')
+        user = self.request.user
+        if user and user.is_active:
+            user_status = UserStatusInSurveys.objects.filter(user=user.id, survey=self.kwargs['pk'])
+            if not user_status:
+                raise PermissionDenied(detail="This user didn't start this survey")
+            if user_status[0].completed:
+                raise PermissionDenied(detail='This user already complete this survey')
             else:
-                user_anonymous_id = {'user_anonymous_id': 1}
-            return Response(user_anonymous_id, status=status.HTTP_202_ACCEPTED)
+                return survey.questions.all()
+        return survey.questions.all()
+
+
+class StartSurveyCreateAPIView(CreateAPIView):
+    """Use this request to start survey as authenticated user.
+
+    You cannot use this method as anonymous, use /api/survey/<int:pk>/start/anonymous/ instead."""
+    serializer_class = UserStatusInSurveysSerializer
+
+    def create(self, request, *args, **kwargs):
+        user = self.request.user
+        if not user or not user.is_active:
+            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
+                                   'For anonymous use api/survey/<int:pk>/start/anonymous')
+        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        if survey.date_end < pytz.UTC.localize(datetime.now()):
+            raise PermissionDenied(detail='This survey is outdated')
         if UserStatusInSurveys.objects.filter(user=user.id, survey=survey.id):
-            return Response({'user': 'this user already begin or complete this survey'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        serializer = UserStatusInSurveysSerializer(data={'user': (user.id,), 'survey': (survey.id,),
-                                                         'completed': False})
-        if serializer.is_valid():
-            serializer.save()
-            return Response({'survey': 'started'}, status=status.HTTP_202_ACCEPTED)
+            raise ParseError(detail='This user already start or complete this survey.')
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class StartSurveyAsAnonymousCreateAPIView(CreateAPIView):
+    """Use this request to start survey as anonymous user.
+
+    You cannot use this method as authenticated user, use /api/survey/<int:pk>/start/ instead."""
+    serializer_class = AnonymousUserStatusInSurveysSerializer
+
+    def create(self, request, *args, **kwargs):
+        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        if survey.date_end < pytz.UTC.localize(datetime.now()):
+            raise PermissionDenied(detail='This survey is outdated')
+        if AnonymousUserStatusInSurveys.objects.all():
+            anonymous_id = AnonymousUserAnswer.objects.aggregate(Max('id'))
+            anonymous_id['id'] += 1
         else:
-            return Response(serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            anonymous_id = {'id': 1}
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        data = serializer.data
+        data.update(anonymous_id)
+        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class CreateUserAnswerCreateAPIView(CreateAPIView):
+    """Use this request to send answers to questions as authorized user.
+
+    You cannot use this request for anonymous, use /api/survey/<int:pk>/answer/anonymous/ instead
+
+    Actually, you don't need to send "survey" and "user", server added this fields automatically."""
+
+    serializer_class = UserAnswerSerializer
+
+    def create(self, request, *args, **kwargs):
+        user = self.request.user
+        if not user or not user.is_active:
+            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
+                                   'For anonymous use api/survey/<int:pk>/answer/anonymous')
+        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        if survey.date_end < pytz.UTC.localize(datetime.now()):
+            raise PermissionDenied(detail='This survey is outdated')
+        data = request.data
+        if not data.get('survey'):
+            data.update({'survey': (survey.id, )})
+        if not data.get('user'):
+            data.update({'user': user.id})
+        if data.get('question'):
+            question_type = get_object_or_404(Question, pk=data.get('question')).type.id
+            if question_type == 1 and data.get('answer_choose'):
+                raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
+            if question_type == 2 and data.get('answer_text'):
+                raise ParseError('Invalid "answer_text" for question type "Radio". This field should be empty.')
+            if question_type == 2 and len(data.get('answer_choose')) > 1:
+                raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
+            if question_type == 3 and data.get('answer_text'):
+                raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class CompleteSurveyUpdateAPIView(UpdateAPIView):
+    """Use this request to complete survey for authorized user.
+
+    You cannot use this request for anonymous, use /api/survey/<int:pk>/complete/anonymous/ instead.
+
+    Actually, you don't need to send anything, server set status as complete anyway.
+
+    Remember, that you cannot complete survey if you don't start it, or you send not enough answers.
+
+    WARNING: PUT request works as PATCH."""
+    serializer_class = CompleteSurveySerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_active:
+            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
+                                   'For anonymous use api/survey/<int:pk>/complete/anonymous')
+        return UserStatusInSurveys.objects.filter(user=user.id)
+
+    def update(self, request, *args, **kwargs):
+        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        user = request.user
+        if not user or not user.is_active:
+            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
+                                   'For anonymous use api/survey/<int:pk>/complete/anonymous')
+        user_status_in_survey = UserStatusInSurveys.objects.filter(user=user.id, survey=self.kwargs['pk'])
+        if not user_status_in_survey:
+            return Response({'user': 'This user not started this survey'}, status=status.HTTP_400_BAD_REQUEST)
+        if user_status_in_survey[0].completed:
+            return Response({'user': 'This user already completed this survey'}, status=status.HTTP_400_BAD_REQUEST)
+        answered_questions = UserAnswer.objects.filter(user=user.id).count()
+        questions = survey.questions.all().count()
+        if answered_questions != questions:
+            return Response({'user': 'This user not answered to all questions.'}, status=status.HTTP_400_BAD_REQUEST)
+        user_status = UserStatusInSurveys.objects.get(user=user.id)
+        serializer = self.get_serializer(user_status, data={'completed': True}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 
 @api_view(['POST'])

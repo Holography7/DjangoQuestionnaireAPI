@@ -1,106 +1,118 @@
 from django.contrib import auth
-from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.generics import ListAPIView, CreateAPIView, RetrieveAPIView
+from rest_framework.exceptions import NotFound, NotAuthenticated, ParseError
 
-from surveys.serializes import SurveySerializer
+from surveys.serializes import SurveyActiveSerializer, SurveyCompletedSerializer
 from surveys.models import Survey
 from users.models import UserStatusInSurveys, UserAnswer
-from users.serializes import UserRegistrationSerializer, UserAnswerShortSerializer
+from users.serializes import UserRegistrationSerializer, UserAnswerShortSerializer, UserLoginSerializer, PlugSerializer
 
 
-@api_view(['GET'])
-def api_active_surveys(request):
-    """Returns list of active surveys for this user. Allows only for registered user."""
-    if request.method == 'GET':
-        user = request.user
-        if user.is_authenticated:
+class ActiveSurveysListAPIView(ListAPIView):
+    """Returns list of active surveys for this user.
+
+    Allows only for registered user."""
+    serializer_class = SurveyActiveSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user and user.is_active:
             active_surveys = UserStatusInSurveys.objects.filter(user=user.id, completed=False)
             if active_surveys:
                 active_surveys = active_surveys.values_list('survey', flat=True)
-                surveys = Survey.objects.filter(id__in=active_surveys)
-                serializer = SurveySerializer(surveys, many=True)
-                return Response(serializer.data)
+                return Survey.objects.filter(id__in=active_surveys)
             else:
-                return Response({"user": "not founded any active survey"}, status=status.HTTP_204_NO_CONTENT)
+                raise NotFound(detail='Not founded any active survey for this user')
         else:
-            return Response({"user": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+            raise NotAuthenticated(detail='This feature could be used only by registered users.')
 
 
-@api_view(['POST'])
-def api_registration(request):
-    """Use this POST request for user registration."""
-    if request.method == 'POST':
-        if request.user.is_authenticated:
-            return Response({"user_is_authenticated": True}, status=status.HTTP_208_ALREADY_REPORTED)
-        serializer = UserRegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class CompletedSurveysListAPIView(ListAPIView):
+    """Returns list of completed surveys for this user.
 
+    Allows only for registered user."""
+    serializer_class = SurveyCompletedSerializer
 
-@api_view(['GET'])
-def api_completed_surveys(request):
-    """Returns list of completed surveys for this user. Allows only for registered user."""
-    if request.method == 'GET':
-        user = request.user
-        if user.is_authenticated:
+    def get_queryset(self):
+        user = self.request.user
+        if user and user.is_active:
             completed_surveys = UserStatusInSurveys.objects.filter(user=user.id, completed=True)
             if completed_surveys:
                 completed_surveys = completed_surveys.values_list('survey', flat=True)
-                surveys = Survey.objects.filter(id__in=completed_surveys)
-                serializer = SurveySerializer(surveys, many=True)
-                return Response(serializer.data)
+                return Survey.objects.filter(id__in=completed_surveys)
             else:
-                return Response({"user": "not founded any completed survey"}, status=status.HTTP_204_NO_CONTENT)
+                raise NotFound(detail='Not founded any completed survey for this user')
         else:
-            return Response({"user": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+            raise NotAuthenticated(detail='This feature could be used only by registered users.')
 
 
-@api_view(['GET'])
-def api_survey_answers(request, pk):
-    """Returns list of answers to questions for concrete survey (using id). Allows only for registered user."""
-    if request.method == 'GET':
-        user = request.user
-        if user.is_authenticated:
-            survey = UserStatusInSurveys.objects.filter(user=user.id, survey=pk, completed=True)
+class UserAnswersListAPIView(ListAPIView):
+    """Returns list of answers to questions for concrete survey (using id).
+
+    Allows only for registered user."""
+    serializer_class = UserAnswerShortSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user and user.is_active:
+            survey = Survey.objects.filter(id=self.kwargs['pk'])
             if survey:
-                survey = Survey.objects.get(id=pk)
-                answers = UserAnswer.objects.filter(user=user.id, survey=survey.id)
-                serializer = UserAnswerShortSerializer(answers, many=True)
-                return Response(serializer.data)
+                answers = UserAnswer.objects.filter(user=user.id, survey=self.kwargs['pk'])
+                if answers:
+                    return answers
+                else:
+                    raise NotFound(detail='Answers not found in this survey for this user.')
             else:
-                return Response({'user': 'this survey not completed'}, status=status.HTTP_400_BAD_REQUEST)
+                raise NotFound(detail='Survey not found.')
         else:
-            return Response({"user": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+            raise NotAuthenticated(detail='This feature could be used only by registered users.')
 
 
-@api_view(['POST'])
-def api_login(request):
-    """Use this POST request for login."""
-    if request.method == 'POST':
-        if request.user.is_authenticated:
-            return Response({"user": "already authenticated"},
-                            status=status.HTTP_208_ALREADY_REPORTED)
+class UserCreateAPIView(CreateAPIView):
+    """Use this request to registrate new user.
+
+    Remember that you cannot register if you are already signed in."""
+    serializer_class = UserRegistrationSerializer
+
+    def create(self, request, *args, **kwargs):
+        if self.request.user.is_active:
+            raise ParseError(detail='You trying to register user when you already authenticated.')
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class LoginAPIView(CreateAPIView):
+    """Use this request for login."""
+    serializer_class = UserLoginSerializer
+
+    def create(self, request, *args, **kwargs):
         username = request.data.get('username')
         password = request.data.get('password')
-        user = auth.authenticate(username=username, password=password)
-        if user and user.is_active:
-            auth.login(request, user)
-            return Response(request.data, status=status.HTTP_202_ACCEPTED)
+        if username and password:
+            user = auth.authenticate(username=username, password=password)
+            if user and user.is_active:
+                auth.login(request, user)
+                return Response({'username': username, 'password': password}, status=status.HTTP_202_ACCEPTED)
+            else:
+                return Response({'error_message': 'Login or password is incorrect.'},
+                                status=status.HTTP_400_BAD_REQUEST)
         else:
-            return Response({'error_message': "Login or password is incorrect."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            not_founded_fields = [field for field in ('username', 'password') if not request.data.get(field)]
+            return Response({val: 'required' for val in not_founded_fields}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
-def api_logout(request):
-    """Use this POST request for logout. POST should be empty (but with user information)"""
-    if request.method == 'POST':
+class LogoutRetrieveAPIView(RetrieveAPIView):
+    """Use this request for logout."""
+    serializer_class = PlugSerializer
+
+    def retrieve(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             auth.logout(request)
-            return Response({"user": "logouted"}, status=status.HTTP_202_ACCEPTED)
+            return Response({'username': request.user.username + 'logout'}, status=status.HTTP_202_ACCEPTED)
         else:
-            return Response({"user": "not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'user': 'not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)

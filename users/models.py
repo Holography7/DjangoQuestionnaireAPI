@@ -14,6 +14,11 @@ class UserStatusInSurveys(models.Model):
     completed = models.BooleanField(default=False)
 
 
+class AnonymousUserStatusInSurveys(models.Model):
+    survey = models.ManyToManyField(Survey)
+    completed = models.BooleanField(default=False)
+
+
 class UserAnswer(models.Model):
     survey = models.ManyToManyField(Survey)
     question = models.ForeignKey(Question, on_delete=models.PROTECT, default=0)
@@ -25,6 +30,6 @@ class UserAnswer(models.Model):
 class AnonymousUserAnswer(models.Model):
     survey = models.ManyToManyField(Survey)
     question = models.ForeignKey(Question, on_delete=models.PROTECT, default=0)
-    user_anonymous_id = models.PositiveIntegerField(default=0)
+    user_anonymous_id = models.ForeignKey(AnonymousUserStatusInSurveys, on_delete=models.PROTECT, default=0)
     answer_text = models.TextField(blank=True)
     answer_choose = models.ManyToManyField(AnswersVariants, blank=True)

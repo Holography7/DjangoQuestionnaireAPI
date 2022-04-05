@@ -1,8 +1,7 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
-from surveys.models import Survey, Question, AnswersVariants
-from users.models import UserAnswer, User, AnonymousUserAnswer, UserStatusInSurveys
+from users.models import UserAnswer, User, AnonymousUserAnswer, UserStatusInSurveys, AnonymousUserStatusInSurveys
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -39,11 +38,25 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 
+class UserLoginSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = ('username', 'password')
+
+
+class AnonymousUserStatusInSurveysSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = AnonymousUserStatusInSurveys
+        fields = ('survey',)
+
+
 class UserStatusInSurveysSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserStatusInSurveys
-        fields = ('user', 'survey', 'completed')
+        fields = ('user', 'survey')
 
 
 class UserCompleteSurveySerializer(serializers.ModelSerializer):
@@ -79,3 +92,16 @@ class UserAnswerShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAnswer
         fields = ('question', 'answer_text', 'answer_choose')
+
+
+class PlugSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = ('username',)
+
+
+class CompleteSurveySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserStatusInSurveys
+        fields = ('user', 'survey', 'completed')

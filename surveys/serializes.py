@@ -21,3 +21,17 @@ class SurveySerializer(serializers.ModelSerializer):
     class Meta:
         model = Survey
         fields = ('name', 'date_end', 'description')
+
+
+class SurveyActiveSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Survey
+        fields = ('name', 'date_end', 'description')
+
+
+class SurveyCompletedSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Survey
+        fields = ('name', 'description')

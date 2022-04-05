@@ -21,13 +21,13 @@ from django.views.generic import TemplateView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('survey/', include('surveys.urls', namespace='survey')),
-    path('user/', include('users.urls', namespace='users')),
-    path('openapi/', get_schema_view(
+    path('api/survey/', include('surveys.urls', namespace='survey')),
+    path('api/user/', include('users.urls', namespace='users')),
+    path('api/openapi/', get_schema_view(
         title="Questionnaire API",
         description="API for developers who wants do questionnaire",
     ), name='openapi-schema'),
-    path('docs/', TemplateView.as_view(
+    path('api/docs/', TemplateView.as_view(
         template_name='surveys/documentation.html',
         extra_context={'schema_url': 'openapi-schema'}
     ), name='swagger-ui'),
