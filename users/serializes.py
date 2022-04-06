@@ -105,3 +105,9 @@ class CompleteSurveySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserStatusInSurveys
         fields = ('user', 'survey', 'completed')
+
+
+class CompleteSurveyAsAnonymousSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnonymousUserStatusInSurveys
+        fields = ('user_anonymous_id', 'survey', 'completed')

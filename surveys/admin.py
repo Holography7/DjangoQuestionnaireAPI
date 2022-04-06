@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from surveys.models import Survey, AnswersVariants, Question, QuestionType
+from surveys.models import Survey, AnswersVariants, Question
 
 admin.site.register(AnswersVariants)
 

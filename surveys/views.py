@@ -14,6 +14,7 @@ from surveys.serializes import SurveySerializer, QuestionSerializer
 from users.models import UserAnswer, AnonymousUserAnswer, UserStatusInSurveys, AnonymousUserStatusInSurveys
 from users.serializes import UserAnswerSerializer, AnonymousUserAnswerSerializer, UserStatusInSurveysSerializer
 from users.serializes import AnonymousUserStatusInSurveysSerializer, CompleteSurveySerializer
+from users.serializes import CompleteSurveyAsAnonymousSerializer
 
 
 class SurveyListAPIView(ListAPIView):
@@ -40,7 +41,10 @@ class QuestionsListAPIView(ListAPIView):
     """Returns list of questions from survey.
 
     Remember that you cannot get access there if survey outdated, user not send POST to api/survey/<int:id>/start/ to
-    start survey or already complete this survey."""
+    start survey or already complete this survey.
+
+    You should send anonymous_id in cookie to get access as anonymous user. You can get it when you send POST to
+    api/survey/<int:id>/start/anonymous for the first time."""
     serializer_class = QuestionSerializer
 
     def get_queryset(self):
@@ -54,9 +58,18 @@ class QuestionsListAPIView(ListAPIView):
                 raise PermissionDenied(detail="This user didn't start this survey")
             if user_status[0].completed:
                 raise PermissionDenied(detail='This user already complete this survey')
-            else:
-                return survey.questions.all()
-        return survey.questions.all()
+            return survey.questions.all()
+        else:
+            if 'anonymous_id' not in self.request.COOKIES:
+                raise PermissionDenied(detail='This anonymous user not have anonymous_id in cookie.')
+            anonymous_id = self.request.COOKIES['anonymous_id']
+            anonymous_status = AnonymousUserStatusInSurveys.objects.filter(user_anonymous_id=anonymous_id,
+                                                                           survey=survey.id)
+            if not anonymous_status:
+                raise PermissionDenied(detail="This anonymous user didn't start this survey")
+            if anonymous_status[0].completed:
+                raise PermissionDenied(detail='This anonymous user already complete this survey')
+            return survey.questions.all()
 
 
 class StartSurveyCreateAPIView(CreateAPIView):
@@ -66,11 +79,14 @@ class StartSurveyCreateAPIView(CreateAPIView):
     serializer_class = UserStatusInSurveysSerializer
 
     def create(self, request, *args, **kwargs):
+        data = request.data
+        if not data.get('survey'):
+            data.update({'survey': [self.kwargs['pk']]})
         user = self.request.user
         if not user or not user.is_active:
             raise NotAuthenticated('This POST request method allowed only for registered users. ' +
                                    'For anonymous use api/survey/<int:pk>/start/anonymous')
-        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        survey = get_object_or_404(Survey, pk=data['survey'])
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
         if UserStatusInSurveys.objects.filter(user=user.id, survey=survey.id):
@@ -85,25 +101,43 @@ class StartSurveyCreateAPIView(CreateAPIView):
 class StartSurveyAsAnonymousCreateAPIView(CreateAPIView):
     """Use this request to start survey as anonymous user.
 
-    You cannot use this method as authenticated user, use /api/survey/<int:pk>/start/ instead."""
+    You cannot use this method as authenticated user, use /api/survey/<int:pk>/start/ instead.
+
+    Don't forget that server using cookies for anonymous. anonymous_id is creating there."""
     serializer_class = AnonymousUserStatusInSurveysSerializer
 
     def create(self, request, *args, **kwargs):
-        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        data = request.data
+        if not data.get('survey'):
+            data.update({'survey': [self.kwargs['pk']]})
+        survey = get_object_or_404(Survey, pk=data['survey'])
+        if 'anonymous_id' in request.COOKIES:
+            anonymous_id = request.COOKIES['anonymous_id']
+            anonymous_status = AnonymousUserStatusInSurveys.objects.filter(user_anonymous_id=anonymous_id,
+                                                                           survey=survey.id)
+            if anonymous_status:
+                raise ParseError('This anonymous already start or complete this survey')
+        else:
+            anonymous_id = None
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
-        if AnonymousUserStatusInSurveys.objects.all():
-            anonymous_id = AnonymousUserAnswer.objects.aggregate(Max('id'))
-            anonymous_id['id'] += 1
+        if not anonymous_id:
+            if AnonymousUserStatusInSurveys.objects.all():
+                anonymous_id = AnonymousUserStatusInSurveys.objects.aggregate(Max('id'))
+                anonymous_id['id__max'] += 1
+            else:
+                anonymous_id = {'id__max': 1}
         else:
-            anonymous_id = {'id': 1}
+            anonymous_id = {'id__max': anonymous_id}
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        data = serializer.data
-        data.update(anonymous_id)
-        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+        response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        if 'anonymous_id' not in request.COOKIES:
+            max_age = survey.date_end.timestamp() - pytz.UTC.localize(datetime.now()).timestamp()
+            response.set_cookie('anonymous_id', anonymous_id['id__max'], max_age=max_age)
+        return response
 
 
 class CreateUserAnswerCreateAPIView(CreateAPIView):
@@ -112,22 +146,73 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
     You cannot use this request for anonymous, use /api/survey/<int:pk>/answer/anonymous/ instead
 
     Actually, you don't need to send "survey" and "user", server added this fields automatically."""
-
     serializer_class = UserAnswerSerializer
 
     def create(self, request, *args, **kwargs):
+        data = request.data
+        if not data.get('survey'):
+            data.update({'survey': [self.kwargs['pk']]})
         user = self.request.user
         if not user or not user.is_active:
             raise NotAuthenticated('This POST request method allowed only for registered users. ' +
                                    'For anonymous use api/survey/<int:pk>/answer/anonymous')
-        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        survey = get_object_or_404(Survey, pk=data['survey'])
+        if survey.date_end < pytz.UTC.localize(datetime.now()):
+            raise PermissionDenied(detail='This survey is outdated')
+        question = request.data['question']
+        answer = UserAnswer.objects.filter(id=user.id, survey=survey.id, question=question)
+        if answer:
+            raise ParseError('This user already created answer.')
+        if not data.get('user'):
+            data.update({'user': user.id})
+        if data.get('question'):
+            question_type = get_object_or_404(Question, pk=data.get('question')).type.id
+            if question_type == 1 and data.get('answer_choose'):
+                raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
+            if question_type == 2 and data.get('answer_text'):
+                raise ParseError('Invalid "answer_text" for question type "Radio". This field should be empty.')
+            if question_type == 2 and len(data.get('answer_choose')) > 1:
+                raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
+            if question_type == 3 and data.get('answer_text'):
+                raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class CreateAnonymousUserAnswerCreateAPIView(CreateAPIView):
+    """Use this request to send answers to questions as anonymous user.
+
+    You cannot use this request for authorized, use /api/survey/<int:pk>/answer/ instead.
+
+    Remember that "anonymous_id" should be sent as cookie, without this value you will get 401 response.
+
+    Actually, you don't need to send "survey" and "user_anonymous_id", server added this fields automatically."""
+    serializer_class = AnonymousUserAnswerSerializer
+
+    def create(self, request, *args, **kwargs):
+        if 'anonymous_id' in request.COOKIES:
+            anonymous_id = request.COOKIES['anonymous_id']
+        else:
+            raise NotAuthenticated('This POST request required "anonymous_id" in cookies.')
+        if self.request.user and self.request.user.is_active:
+            raise NotAuthenticated('This POST request method allowed only for anonymous users. ' +
+                                   'For authorized users use api/survey/<int:pk>/answer/')
+        data = request.data
+        if not data.get('survey'):
+            data.update({'survey': [self.kwargs['pk']]})
+        survey = get_object_or_404(Survey, pk=data['survey'])
+        question = request.data['question']
+        answer = AnonymousUserAnswer.objects.filter(user_anonymous_id=anonymous_id, survey=survey.id, question=question)
+        if answer:
+            raise ParseError('This anonymous user already created answer.')
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
         data = request.data
-        if not data.get('survey'):
-            data.update({'survey': (survey.id, )})
-        if not data.get('user'):
-            data.update({'user': user.id})
+        if not data.get('user_anonymous_id'):
+            data.update({'user_anonymous_id': anonymous_id})
         if data.get('question'):
             question_type = get_object_or_404(Question, pk=data.get('question')).type.id
             if question_type == 1 and data.get('answer_choose'):
@@ -179,110 +264,56 @@ class CompleteSurveyUpdateAPIView(UpdateAPIView):
         questions = survey.questions.all().count()
         if answered_questions != questions:
             return Response({'user': 'This user not answered to all questions.'}, status=status.HTTP_400_BAD_REQUEST)
-        user_status = UserStatusInSurveys.objects.get(user=user.id)
-        serializer = self.get_serializer(user_status, data={'completed': True}, partial=True)
+        serializer = self.get_serializer(user_status_in_survey[0], data={'completed': True}, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
 
 
-@api_view(['POST'])
-def api_complete_survey(request, pk):
-    """This request same as for beginning survey, just send empty POST. For anonymous user this request don't need
-    because server not saving status in survey for anonymous users."""
-    if request.method == 'POST':
-        user = request.user
-        if user and user.is_active:
-            user_status_in_survey = UserStatusInSurveys.objects.filter(user=user.id, survey=pk)
-            if user_status_in_survey[0].completed:
-                return Response({'user': 'already completed this survey'}, status=status.HTTP_400_BAD_REQUEST)
-            answered_questions = UserAnswer.objects.filter(user=user.id).count()
-            survey = get_object_or_404(Survey, pk=pk)
-            questions = survey.questions.all().count()
-            if answered_questions == questions:
-                user_status = UserStatusInSurveys.objects.get(user=user.id)
-                serializer = UserStatusInSurveysSerializer(user_status, data={'completed': True}, partial=True)
-                if serializer.is_valid():
-                    serializer.save()
-                    return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
-                else:
-                    return Response(serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            else:
-                return Response({'user': 'not all questions answered'}, status=status.HTTP_400_BAD_REQUEST)
+class CompleteSurveyAsAnonymousUpdateAPIView(UpdateAPIView):
+    """Use this request to complete survey for anonymous user.
+
+    You cannot use this request for authorized user, use /api/survey/<int:pk>/complete/ instead.
+
+    Actually, you don't need to send anything, server set status as complete anyway.
+
+    Remember, that you cannot complete survey if you don't start it, or you send not enough answers.
+
+    WARNING: PUT request works as PATCH."""
+    serializer_class = CompleteSurveyAsAnonymousSerializer
+
+    def get_queryset(self):
+        if 'anonymous_id' in self.request.COOKIES:
+            anonymous_id = self.request.COOKIES['anonymous_id']
         else:
-            return Response({'user': 'this function not allowed for anonymous user'},
+            raise NotAuthenticated('This request required "anonymous_id" in cookies.')
+        if self.request.user and self.request.user.is_active:
+            raise NotAuthenticated('This request method allowed only for anonymous users. ' +
+                                   'For authorized users use api/survey/<int:pk>/complete/')
+        return AnonymousUserStatusInSurveys.objects.filter(user_anonymous_id=anonymous_id)
+
+    def update(self, request, *args, **kwargs):
+        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        if 'anonymous_id' in self.request.COOKIES:
+            anonymous_id = self.request.COOKIES['anonymous_id']
+        else:
+            raise NotAuthenticated('This request required "anonymous_id" in cookies.')
+        if self.request.user and self.request.user.is_active:
+            raise NotAuthenticated('This request method allowed only for anonymous users. ' +
+                                   'For authorized users use api/survey/<int:pk>/complete/')
+        anonymous_user_status_in_survey = AnonymousUserStatusInSurveys.objects.filter(user_anonymous_id=anonymous_id,
+                                                                                      survey=self.kwargs['pk'])
+        if not anonymous_user_status_in_survey:
+            return Response({'user': 'This anonymous user not started this survey'}, status=status.HTTP_400_BAD_REQUEST)
+        if anonymous_user_status_in_survey[0].completed:
+            return Response({'user': 'This anonymous user already completed this survey'},
                             status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['GET', 'POST', 'PATCH'])
-def api_question(request, pk_survey, pk_question):
-    """GET request returns information about question.
-
-    pk_survey - actually it's id survey, that you can know from survey information
-    (GET /survey/api/surveys/<int:survey_id>), pk_question - it's a number of order question in survey, so it's just a
-    value from 1 to questions_count that you can get from survey information (GET /survey/api/surveys/<int:survey_id>).
-    Don't forget that you cannot get access to question before you don't begin survey
-    (POST /survey/api/surveys/<int:survey_id>).
-
-    POST request is sending answer to question. There are 3 options in relation to question type:
-    1. Text: {"answer": "text"}
-    2. Radio: {"answer": [1]}
-    3. Checkbox: {"answer": [1, 2, 3]}.
-
-    Question type you can get from GET request of this URL.
-    Don't forget to add field "user_anonymous_id" into POST request for anonymous user.
-    Remember that you cannot edit answer using POST request, use PATCH instead in this URL."""
-    if request.method == 'GET':
-        survey = get_object_or_404(Survey, pk=pk_survey)
-        question = survey.questions.all()[pk_question - 1]
-        serializer = QuestionSerializer(question)
+        answered_questions = AnonymousUserAnswer.objects.filter(user_anonymous_id=anonymous_id).count()
+        questions = survey.questions.all().count()
+        if answered_questions != questions:
+            return Response({'user': 'This anonymous user not answered to all questions.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(anonymous_user_status_in_survey[0], data={'completed': True}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
         return Response(serializer.data)
-    elif request.method == 'POST':
-        user = request.user
-        survey = Survey.objects.get(id=pk_survey)
-        question = survey.questions.all()[pk_question - 1]
-        if user and user.is_active:
-            user_active_survey = UserStatusInSurveys.objects.filter(user=user.id, survey=survey.id)
-            if not user_active_survey:
-                return Response({"user": "active survey before send answer"}, status=status.HTTP_400_BAD_REQUEST)
-            user_answer = UserAnswer.objects.filter(user=user.id, survey=survey.id, question=question.id)
-            if user_answer:
-                return Response({"user": "This user already answered. Use PATCH request instead of POST for changing"},
-                                status=status.HTTP_400_BAD_REQUEST)
-        data = {'survey': (survey.id,), 'question': question.id}
-        if question.type.id == 1:
-            data['answer_text'] = request.data.get('answer')
-        else:
-            data['answer_choose'] = request.data.get('answer')
-        if user and user.is_active:
-            data['user'] = user.id
-            serializer = UserAnswerSerializer(data=data)
-        else:
-            data['user_anonymous_id'] = request.data.get('user_anonymous_id')
-            serializer = AnonymousUserAnswerSerializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    elif request.method == 'PATCH':
-        user = request.user
-        survey = Survey.objects.get(id=pk_survey)
-        question = survey.questions.all()[pk_question - 1]
-        if question.type.id == 1:
-            data = {'answer_text': request.data.get('answer')}
-        else:
-            data = {'answer_choose': request.data.get('answer')}
-        if user and user.is_active:
-            user_answer = UserAnswer.objects.get(user=user.id, survey=survey.id, question=question.id)
-            serializer = UserAnswerSerializer(user_answer, data=data, partial=True)
-        else:
-            user_answer = AnonymousUserAnswer.objects.get(user_anonymous_id=request.data.get('user_anonymous_id'),
-                                                          survey=survey.id, question=question.id)
-            data.update({'user_anonymous_id': request.data.get('user_anonymous_id')})
-            serializer = AnonymousUserAnswerSerializer(user_answer, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_206_PARTIAL_CONTENT)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
