@@ -1,1 +1,0 @@
-[{"model": "surveys.answersvariants", "pk": 1, "fields": {"answer": "Тестовый ответ 1"}}, {"model": "surveys.answersvariants", "pk": 2, "fields": {"answer": "Тестовый ответ 2"}}, {"model": "surveys.answersvariants", "pk": 3, "fields": {"answer": "Новый ответ"}}]
