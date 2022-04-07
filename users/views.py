@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.generics import ListAPIView, CreateAPIView, RetrieveAPIView
 from rest_framework.exceptions import NotFound, NotAuthenticated, ParseError
+from rest_framework.permissions import IsAuthenticated
 
 from surveys.serializes import SurveyActiveSerializer, SurveyCompletedSerializer
 from surveys.models import Survey
@@ -14,60 +15,51 @@ class ActiveSurveysListAPIView(ListAPIView):
     """Returns list of active surveys for this user.
 
     Allows only for registered user."""
+    permission_classes = (IsAuthenticated, )
     serializer_class = SurveyActiveSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user and user.is_active:
-            active_surveys = UserStatusInSurveys.objects.filter(user=user.id, completed=False)
-            if active_surveys:
-                active_surveys = active_surveys.values_list('survey', flat=True)
-                return Survey.objects.filter(id__in=active_surveys)
-            else:
-                raise NotFound(detail='Not founded any active survey for this user')
+        active_surveys = UserStatusInSurveys.objects.filter(user=self.request.user.id, completed=False)
+        if active_surveys:
+            active_surveys = active_surveys.values_list('survey', flat=True)
+            return Survey.objects.filter(id__in=active_surveys)
         else:
-            raise NotAuthenticated(detail='This feature could be used only by registered users.')
+            raise NotFound(detail='Not founded any active survey for this user')
 
 
 class CompletedSurveysListAPIView(ListAPIView):
     """Returns list of completed surveys for this user.
 
     Allows only for registered user."""
+    permission_classes = (IsAuthenticated, )
     serializer_class = SurveyCompletedSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user and user.is_active:
-            completed_surveys = UserStatusInSurveys.objects.filter(user=user.id, completed=True)
-            if completed_surveys:
-                completed_surveys = completed_surveys.values_list('survey', flat=True)
-                return Survey.objects.filter(id__in=completed_surveys)
-            else:
-                raise NotFound(detail='Not founded any completed survey for this user')
+        completed_surveys = UserStatusInSurveys.objects.filter(user=self.request.user.id, completed=True)
+        if completed_surveys:
+            completed_surveys = completed_surveys.values_list('survey', flat=True)
+            return Survey.objects.filter(id__in=completed_surveys)
         else:
-            raise NotAuthenticated(detail='This feature could be used only by registered users.')
+            raise NotFound(detail='Not founded any completed survey for this user')
 
 
 class UserAnswersListAPIView(ListAPIView):
     """Returns list of answers to questions for concrete survey (using id).
 
     Allows only for registered user."""
+    permission_classes = (IsAuthenticated,)
     serializer_class = UserAnswerShortSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user and user.is_active:
-            survey = Survey.objects.filter(id=self.kwargs['pk'])
-            if survey:
-                answers = UserAnswer.objects.filter(user=user.id, survey=self.kwargs['pk'])
-                if answers:
-                    return answers
-                else:
-                    raise NotFound(detail='Answers not found in this survey for this user.')
+        survey = Survey.objects.filter(id=self.kwargs['pk'])
+        if survey:
+            answers = UserAnswer.objects.filter(user=self.request.user.id, survey=self.kwargs['pk'])
+            if answers:
+                return answers
             else:
-                raise NotFound(detail='Survey not found.')
+                raise NotFound(detail='Answers not found in this survey for this user.')
         else:
-            raise NotAuthenticated(detail='This feature could be used only by registered users.')
+            raise NotFound(detail='Survey not found.')
 
 
 class UserCreateAPIView(CreateAPIView):

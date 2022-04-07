@@ -4,9 +4,9 @@ from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
 from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, UpdateAPIView
 from rest_framework.exceptions import PermissionDenied, ParseError, NotAuthenticated
+from rest_framework.permissions import IsAuthenticated
 
 
 from surveys.models import Survey, Question
@@ -78,25 +78,22 @@ class StartSurveyCreateAPIView(CreateAPIView):
     You cannot use this method as anonymous, use /api/survey/<int:pk>/start/anonymous/ instead.
 
     You don't need to send anything in POST, server can grab this fields by itself."""
+    permission_classes = (IsAuthenticated,)
     serializer_class = UserStatusInSurveysSerializer
 
     def create(self, request, *args, **kwargs):
         data = request.data
         if not data.get('survey'):
             data.update({'survey': [self.kwargs['pk']]})
-        user = request.user
-        if not user or not user.is_active:
-            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
-                                   'For anonymous use api/survey/<int:pk>/start/anonymous')
         if not data.get('user'):
-            data.update({'user': [user.id]})
+            data.update({'user': [request.user.id]})
         else:
             if data['user'] != request.user.id:
                 raise ParseError(detail='user value not same as from request.')
         survey = get_object_or_404(Survey, pk=data['survey'][0])
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
-        if UserStatusInSurveys.objects.filter(user=user.id, survey=survey.id):
+        if UserStatusInSurveys.objects.filter(user=request.user.id, survey=survey.id):
             raise ParseError(detail='This user already start or complete this survey.')
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
@@ -159,18 +156,15 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
 
     Actually, you don't need to send "survey" and "user", server added this fields automatically.
     """
+    permission_classes = (IsAuthenticated,)
     serializer_class = UserAnswerSerializer
 
     def create(self, request, *args, **kwargs):
         data = request.data
         if not data.get('survey'):
             data.update({'survey': [self.kwargs['pk']]})
-        user = self.request.user
-        if not user or not user.is_active:
-            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
-                                   'For anonymous use api/survey/<int:pk>/answer/anonymous')
         if not data.get('user'):
-            data.update({'user': [user.id]})
+            data.update({'user': request.user.id})
         else:
             if data['user'] != request.user.id:
                 raise ParseError(detail='user value not same as from request.')
@@ -180,7 +174,7 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
         question = get_object_or_404(Question, pk=data.get('question'))
         if question not in survey.questions.all():
             raise ParseError('Question not in this survey.')
-        answer = UserAnswer.objects.filter(id=user.id, survey=survey.id, question=question.id)
+        answer = UserAnswer.objects.filter(id=request.user.id, survey=survey.id, question=question.id)
         if answer:
             raise ParseError('This user already created answer.')
         validate_answer(question, data.get('answer_text'), data.get('answer_choose'))
@@ -244,27 +238,20 @@ class CompleteSurveyUpdateAPIView(UpdateAPIView):
     Remember, that you cannot complete survey if you don't start it, or you send not enough answers.
 
     WARNING: PUT request works as PATCH."""
+    permission_classes = (IsAuthenticated,)
     serializer_class = CompleteSurveySerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if not user or not user.is_active:
-            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
-                                   'For anonymous use api/survey/<int:pk>/complete/anonymous')
-        return UserStatusInSurveys.objects.filter(user=user.id)
+        return UserStatusInSurveys.objects.filter(user=self.request.user.id)
 
     def update(self, request, *args, **kwargs):
         survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
-        user = request.user
-        if not user or not user.is_active:
-            raise NotAuthenticated('This POST request method allowed only for registered users. ' +
-                                   'For anonymous use api/survey/<int:pk>/complete/anonymous')
-        user_status_in_survey = UserStatusInSurveys.objects.filter(user=user.id, survey=self.kwargs['pk'])
+        user_status_in_survey = UserStatusInSurveys.objects.filter(user=request.user.id, survey=self.kwargs['pk'])
         if not user_status_in_survey:
             return Response({'user': 'This user not started this survey'}, status=status.HTTP_400_BAD_REQUEST)
         if user_status_in_survey[0].completed:
             return Response({'user': 'This user already completed this survey'}, status=status.HTTP_400_BAD_REQUEST)
-        answered_questions = UserAnswer.objects.filter(user=user.id).count()
+        answered_questions = UserAnswer.objects.filter(user=request.user.id).count()
         questions = survey.questions.all().count()
         if answered_questions != questions:
             return Response({'user': 'This user not answered to all questions.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -324,16 +311,16 @@ class CompleteSurveyAsAnonymousUpdateAPIView(UpdateAPIView):
 
 
 def validate_answer(question, answer_text, answer_choose):
-    question_type = question.type.id
-    if question_type == 1 and answer_choose:
+    question_type = question.type.type
+    if question_type == 'Text' and answer_choose:
         raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
-    if question_type == 2 and answer_text:
+    if question_type == 'Radio' and answer_text:
         raise ParseError('Invalid "answer_text" for question type "Radio". This field should be empty.')
-    if question_type == 2 and len(answer_choose) > 1:
+    if question_type == 'Radio' and len(answer_choose) > 1:
         raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
-    if question_type == 3 and answer_text:
+    if question_type == 'Checkbox' and answer_text:
         raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
-    if question_type != 1:
+    if question_type != 'Text':
         answers_variants = question.answers.all().values('id')
         for answer_request in answer_choose:
             if {'id': answer_request} not in answers_variants:

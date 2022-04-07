@@ -21,11 +21,14 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 # See https://docs.djangoproject.com/en/3.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+# SECRET_KEY = os.environ.get("SECRET_KEY")
 SECRET_KEY = 'django-insecure-%v$90w^)1ku#9odog8(ucylew=1s5_f8=pzq+88ca8(93t)wzb'
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# DEBUG = int(os.environ.get("DEBUG", default=0))
 DEBUG = True
 
+# ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
 ALLOWED_HOSTS = []
 
 
@@ -42,6 +45,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_swagger',
+    'rest_framework.authtoken',
 
     'surveys',
     'users',
@@ -77,6 +81,12 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'questionnaire.wsgi.application'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+               'rest_framework.authentication.TokenAuthentication',
+    ),
+}
 
 
 # Database
