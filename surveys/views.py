@@ -75,23 +75,30 @@ class QuestionsListAPIView(ListAPIView):
 class StartSurveyCreateAPIView(CreateAPIView):
     """Use this request to start survey as authenticated user.
 
-    You cannot use this method as anonymous, use /api/survey/<int:pk>/start/anonymous/ instead."""
+    You cannot use this method as anonymous, use /api/survey/<int:pk>/start/anonymous/ instead.
+
+    You don't need to send anything in POST, server can grab this fields by itself."""
     serializer_class = UserStatusInSurveysSerializer
 
     def create(self, request, *args, **kwargs):
         data = request.data
         if not data.get('survey'):
             data.update({'survey': [self.kwargs['pk']]})
-        user = self.request.user
+        user = request.user
         if not user or not user.is_active:
             raise NotAuthenticated('This POST request method allowed only for registered users. ' +
                                    'For anonymous use api/survey/<int:pk>/start/anonymous')
-        survey = get_object_or_404(Survey, pk=data['survey'])
+        if not data.get('user'):
+            data.update({'user': [user.id]})
+        else:
+            if data['user'] != request.user.id:
+                raise ParseError(detail='user value not same as from request.')
+        survey = get_object_or_404(Survey, pk=data['survey'][0])
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
         if UserStatusInSurveys.objects.filter(user=user.id, survey=survey.id):
             raise ParseError(detail='This user already start or complete this survey.')
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
@@ -110,13 +117,18 @@ class StartSurveyAsAnonymousCreateAPIView(CreateAPIView):
         data = request.data
         if not data.get('survey'):
             data.update({'survey': [self.kwargs['pk']]})
-        survey = get_object_or_404(Survey, pk=data['survey'])
+        survey = get_object_or_404(Survey, pk=data['survey'][0])
         if 'anonymous_id' in request.COOKIES:
             anonymous_id = request.COOKIES['anonymous_id']
             anonymous_status = AnonymousUserStatusInSurveys.objects.filter(user_anonymous_id=anonymous_id,
                                                                            survey=survey.id)
             if anonymous_status:
                 raise ParseError('This anonymous already start or complete this survey')
+            if not data.get('user_anonymous_id'):
+                data.update({'user_anonymous_id': anonymous_id})
+            else:
+                if data.get('user_anonymous_id') != anonymous_id:
+                    raise ParseError(detail='user_anonymous_id value not same as from cookie.')
         else:
             anonymous_id = None
         if survey.date_end < pytz.UTC.localize(datetime.now()):
@@ -145,7 +157,8 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
 
     You cannot use this request for anonymous, use /api/survey/<int:pk>/answer/anonymous/ instead
 
-    Actually, you don't need to send "survey" and "user", server added this fields automatically."""
+    Actually, you don't need to send "survey" and "user", server added this fields automatically.
+    """
     serializer_class = UserAnswerSerializer
 
     def create(self, request, *args, **kwargs):
@@ -156,17 +169,22 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
         if not user or not user.is_active:
             raise NotAuthenticated('This POST request method allowed only for registered users. ' +
                                    'For anonymous use api/survey/<int:pk>/answer/anonymous')
-        survey = get_object_or_404(Survey, pk=data['survey'])
+        if not data.get('user'):
+            data.update({'user': [user.id]})
+        else:
+            if data['user'] != request.user.id:
+                raise ParseError(detail='user value not same as from request.')
+        survey = get_object_or_404(Survey, pk=data['survey'][0])
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
-        question = request.data['question']
-        answer = UserAnswer.objects.filter(id=user.id, survey=survey.id, question=question)
+        question = get_object_or_404(Question, pk=request.data['question'])
+        if question not in survey.questions.all():
+            raise ParseError('Question not in this survey.')
+        answer = UserAnswer.objects.filter(id=user.id, survey=survey.id, question=question.id)
         if answer:
             raise ParseError('This user already created answer.')
-        if not data.get('user'):
-            data.update({'user': user.id})
         if data.get('question'):
-            question_type = get_object_or_404(Question, pk=data.get('question')).type.id
+            question_type = question.type.id
             if question_type == 1 and data.get('answer_choose'):
                 raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
             if question_type == 2 and data.get('answer_text'):
@@ -175,6 +193,11 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
                 raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
             if question_type == 3 and data.get('answer_text'):
                 raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
+            if question_type != 1:
+                answers_variants = question.answers.all().values('id')
+                for answer_request in data.get('answer_choose'):
+                    if {'id': answer_request} not in answers_variants:
+                        raise ParseError('Invalid "answer_choose": answer not in this question.')
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -203,18 +226,22 @@ class CreateAnonymousUserAnswerCreateAPIView(CreateAPIView):
         data = request.data
         if not data.get('survey'):
             data.update({'survey': [self.kwargs['pk']]})
-        survey = get_object_or_404(Survey, pk=data['survey'])
-        question = request.data['question']
-        answer = AnonymousUserAnswer.objects.filter(user_anonymous_id=anonymous_id, survey=survey.id, question=question)
+        if not data.get('user_anonymous_id'):
+            data.update({'user_anonymous_id': anonymous_id})
+        else:
+            if data.get('user_anonymous_id') != anonymous_id:
+                raise ParseError(detail='user_anonymous_id value not same as from cookie.')
+        survey = get_object_or_404(Survey, pk=data['survey'][0])
+        question = get_object_or_404(Question, pk=request.data['question'])
+        if question not in survey.questions.all():
+            raise ParseError('Question not in this survey.')
+        answer = AnonymousUserAnswer.objects.filter(user_anonymous_id=anonymous_id, survey=survey.id, question=question.id)
         if answer:
             raise ParseError('This anonymous user already created answer.')
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
-        data = request.data
-        if not data.get('user_anonymous_id'):
-            data.update({'user_anonymous_id': anonymous_id})
         if data.get('question'):
-            question_type = get_object_or_404(Question, pk=data.get('question')).type.id
+            question_type = question.type.id
             if question_type == 1 and data.get('answer_choose'):
                 raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
             if question_type == 2 and data.get('answer_text'):
@@ -223,6 +250,11 @@ class CreateAnonymousUserAnswerCreateAPIView(CreateAPIView):
                 raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
             if question_type == 3 and data.get('answer_text'):
                 raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
+            if question_type != 1:
+                answers_variants = question.answers.all().values('id')
+                for answer_request in data.get('answer_choose'):
+                    if {'id': answer_request} not in answers_variants:
+                        raise ParseError('Invalid "answer_choose": answer not in this question.')
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)

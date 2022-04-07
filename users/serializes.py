@@ -49,7 +49,7 @@ class AnonymousUserStatusInSurveysSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AnonymousUserStatusInSurveys
-        fields = ('survey',)
+        fields = ('survey', 'user_anonymous_id')
 
 
 class UserStatusInSurveysSerializer(serializers.ModelSerializer):
