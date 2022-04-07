@@ -177,27 +177,13 @@ class CreateUserAnswerCreateAPIView(CreateAPIView):
         survey = get_object_or_404(Survey, pk=data['survey'][0])
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
-        question = get_object_or_404(Question, pk=request.data['question'])
+        question = get_object_or_404(Question, pk=data.get('question'))
         if question not in survey.questions.all():
             raise ParseError('Question not in this survey.')
         answer = UserAnswer.objects.filter(id=user.id, survey=survey.id, question=question.id)
         if answer:
             raise ParseError('This user already created answer.')
-        if data.get('question'):
-            question_type = question.type.id
-            if question_type == 1 and data.get('answer_choose'):
-                raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
-            if question_type == 2 and data.get('answer_text'):
-                raise ParseError('Invalid "answer_text" for question type "Radio". This field should be empty.')
-            if question_type == 2 and len(data.get('answer_choose')) > 1:
-                raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
-            if question_type == 3 and data.get('answer_text'):
-                raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
-            if question_type != 1:
-                answers_variants = question.answers.all().values('id')
-                for answer_request in data.get('answer_choose'):
-                    if {'id': answer_request} not in answers_variants:
-                        raise ParseError('Invalid "answer_choose": answer not in this question.')
+        validate_answer(question, data.get('answer_text'), data.get('answer_choose'))
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -232,7 +218,7 @@ class CreateAnonymousUserAnswerCreateAPIView(CreateAPIView):
             if data.get('user_anonymous_id') != anonymous_id:
                 raise ParseError(detail='user_anonymous_id value not same as from cookie.')
         survey = get_object_or_404(Survey, pk=data['survey'][0])
-        question = get_object_or_404(Question, pk=request.data['question'])
+        question = get_object_or_404(Question, pk=data.get('question'))
         if question not in survey.questions.all():
             raise ParseError('Question not in this survey.')
         answer = AnonymousUserAnswer.objects.filter(user_anonymous_id=anonymous_id, survey=survey.id, question=question.id)
@@ -240,21 +226,7 @@ class CreateAnonymousUserAnswerCreateAPIView(CreateAPIView):
             raise ParseError('This anonymous user already created answer.')
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
-        if data.get('question'):
-            question_type = question.type.id
-            if question_type == 1 and data.get('answer_choose'):
-                raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
-            if question_type == 2 and data.get('answer_text'):
-                raise ParseError('Invalid "answer_text" for question type "Radio". This field should be empty.')
-            if question_type == 2 and len(data.get('answer_choose')) > 1:
-                raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
-            if question_type == 3 and data.get('answer_text'):
-                raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
-            if question_type != 1:
-                answers_variants = question.answers.all().values('id')
-                for answer_request in data.get('answer_choose'):
-                    if {'id': answer_request} not in answers_variants:
-                        raise ParseError('Invalid "answer_choose": answer not in this question.')
+        validate_answer(question, data.get('answer_text'), data.get('answer_choose'))
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -349,3 +321,20 @@ class CompleteSurveyAsAnonymousUpdateAPIView(UpdateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+
+def validate_answer(question, answer_text, answer_choose):
+    question_type = question.type.id
+    if question_type == 1 and answer_choose:
+        raise ParseError('Invalid "answer_choose" for question type "Text". This field should be empty.')
+    if question_type == 2 and answer_text:
+        raise ParseError('Invalid "answer_text" for question type "Radio". This field should be empty.')
+    if question_type == 2 and len(answer_choose) > 1:
+        raise ParseError('Invalid "answer_choose" for question type "Radio". This field should have 1 value.')
+    if question_type == 3 and answer_text:
+        raise ParseError('Invalid "answer_text" for question type "Checkbox". This field should be empty.')
+    if question_type != 1:
+        answers_variants = question.answers.all().values('id')
+        for answer_request in answer_choose:
+            if {'id': answer_request} not in answers_variants:
+                raise ParseError('Invalid "answer_choose": answer not in this question.')
