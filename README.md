@@ -4,6 +4,7 @@ This article still writing
 Install [Docker Engine](https://docs.docker.com/engine/install/) if it's not.
 Download rep:
 `git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git`
+
 Setup virtual enviroment and activate it:
 ```
 cd DjangoQuestionnaireAPI
@@ -17,6 +18,7 @@ pip3 install -r requirements.txt
 ```
 Change SECRET_KEY in .questionnaire-venv.prod:
 `SECRET_KEY=your_secret_key`
+
 Deploy:
 ```
 cd ..
@@ -31,6 +33,7 @@ If you need down:
 ## How to deploy manually
 Download rep:
 `git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git`
+
 Setup virtual environment:
 ```
 cd DjangoQuestionnaireAPI
@@ -53,6 +56,7 @@ ALLOWED_HOSTS = ['example.com', ]
 ```
 Add enviroment variable SECRET_KEY:
 `export SECRET_KEY=your_secret_key`
+
 Make migrations:
 ```
 python manage.py makemigrations
@@ -66,8 +70,10 @@ python manage.py loaddata groups.json
 ```
 Create superuser for your project:
 `python manage.py createsuperuser`
-Create gunicorn config
+
+Create gunicorn config:
 `sudo nano /etc/systemd/system/gunicorn.service`
+
 And put next code:
 ```
 [Unit]
@@ -84,7 +90,9 @@ ExecStart=/your/path/to/env/bin/gunicorn --access-logfile - --workers 3 --bind u
 WantedBy=multi-user.target
 ```
 **Dont't forget change user and paths.**
+
 Press Ctrl+S to save file and Ctrl+X to close it.
+
 Enable and start service:
 ```
 sudo systemctl enable gunicorn.service
@@ -93,6 +101,7 @@ sudo systemctl status gunicorn.service
 ```
 If you get some trouble, you can see into journal:
 `journalctl -u gunicorn`
+
 If you changed something, restart service:
 ```
 sudo systemctl daemon-reload
@@ -100,8 +109,10 @@ sudo systemctl restart gunicorn
 ```
 Setup Nginx:
 `sudo apt install nginx`
+
 Create custom config:
 `sudo nano /etc/nginx/sites-available/questionnaire`
+
 And put next code:
 ```
 server {
@@ -122,10 +133,13 @@ server {
 **Dont't forget change domain and paths.**
 Create symlink to enable this file:
 `sudo ln -s /etc/nginx/sites-available/questionnaire /etc/nginx/sites-enabled`
+
 Test:
 `sudo nginx -t`
+
 Start:
 `sudo service nginx start`
+
 If you need to restart or stop:
 ```
 sudo service nginx restart
