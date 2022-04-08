@@ -25,18 +25,6 @@ class SurveyListAPIView(ListAPIView):
         return Survey.objects.filter(date_end__gt=pytz.UTC.localize(datetime.now()))
 
 
-class SurveyAPIView(RetrieveAPIView):
-    """Returns information about survey. You can get survey id from api/survey/list/ ."""
-    serializer_class = SurveySerializer
-
-    def get_queryset(self):
-        self.queryset = Survey.objects.filter(id=self.kwargs['pk'])
-        if self.queryset[0].date_end > pytz.UTC.localize(datetime.now()):
-            return self.queryset
-        else:
-            raise PermissionDenied(detail='This survey is outdated')
-
-
 class QuestionsListAPIView(ListAPIView):
     """Returns list of questions from survey.
 
@@ -48,7 +36,7 @@ class QuestionsListAPIView(ListAPIView):
     serializer_class = QuestionSerializer
 
     def get_queryset(self):
-        survey = get_object_or_404(Survey, pk=self.kwargs['pk'])
+        survey = get_object_or_404(Survey, pk=self.kwargs.get('pk'))
         if survey.date_end < pytz.UTC.localize(datetime.now()):
             raise PermissionDenied(detail='This survey is outdated')
         user = self.request.user
