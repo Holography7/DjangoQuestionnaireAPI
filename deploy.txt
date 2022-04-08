@@ -1,14 +1,15 @@
 Linux:
-0. Make sure that you have installed python3
+0. Make sure that you have installed python3 and python3.x-venv
 1. Setup virtual environment:
 python3 -m venv questionnaire-venv
 Activate it:
 source questionnaire-venv/bin/activate
 Download requirements.txt and install packages from it:
 python -m pip install -r requirements.txt
+Probably you get errors for building wheel coreschema and openapi-codec. Ignore that.
 2. Create a folder for server
 3. Clone this repository:
-git clone <repository-url>
+git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git
 If repository changes, you can update your copy:
 git pull
 4. Change file questionnaire/settings.py:
@@ -32,6 +33,7 @@ gunicorn is already installed from requirements.txt, so only need to configure i
 Create service file:
 sudo nano /etc/systemd/system/gunicorn.service
 Which contains:
+---------------------------------------------------------------------------------------------------------------------------------------
 [Unit]
 Description=gunicorn service
 After=network.target
@@ -44,7 +46,9 @@ ExecStart=/your/path/to/env/bin/gunicorn --access-logfile - --workers 3 --bind u
 
 [Install]
 WantedBy=multi-user.target
+---------------------------------------------------------------------------------------------------------------------------------------
 Dont't forget change user and paths.
+Press Ctrl+S to save file and Ctrl+X to close it.
 Now enable and start srevice:
 sudo systemctl enable gunicorn.service
 sudo systemctl start gunicorn.service
@@ -59,6 +63,7 @@ sudo apt install nginx
 Create custom config:
 sudo nano /etc/nginx/sites-available/questionnaire
 Which contains:
+---------------------------------------------------------------------------------------------------------------------------------------
 server {
     listen 80;
     server_name www.yourdomain.com;
@@ -73,6 +78,7 @@ server {
          proxy_pass http://unix:/your/path/to/project/questionnaire.sock;
     }
 }
+---------------------------------------------------------------------------------------------------------------------------------------
 Press Ctrl+S to save file and Ctrl+X to close it.
 Create symlink to enable this file:
 sudo ln -s /etc/nginx/sites-available/questionnaire /etc/nginx/sites-enabled
@@ -84,3 +90,136 @@ If you need to restart or stop:
 sudo service nginx restart
 sudo service nginx stop
 If all do done, it should be works.
+
+Using docker:
+1. Clone repository:
+git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git
+If you want, rename directory:
+mv DjangoQuestionnaireAPI questionnaire
+2. Setup virtual environment:
+python3 -m venv questionnaire-venv
+Activate it:
+source questionnaire-venv/bin/activate
+Install packages from requirements.txt:
+cd DjangoQuestionnaireAPI
+python3 -m pip install -r requirements.txt
+Probably you get errors for building wheel coreschema and openapi-codec. Ignore that.
+3. Make migrations:
+python manage.py migrate
+4. Change file questionnaire/settings.py:
+SECRET_KEY = os.environ.get("SECRET_KEY")
+DEBUG = int(os.environ.get("DEBUG", default=0))
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
+5. Create Dockerfile inside project:
+nano Dockerfile
+---------------------------------------------------------------------------------------------------------------------------------------
+FROM python:3.8-alpine
+
+WORKDIR /usr/src/questionnaire
+
+# set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# install dependencies
+RUN pip install --upgrade pip
+COPY ./requirements.txt .
+RUN pip install -r requirements.txt
+
+# copy project
+COPY . .
+---------------------------------------------------------------------------------------------------------------------------------------
+6. Create docker-compose.yaml in root directory:
+cd ..
+nano docker-compose.yaml
+---------------------------------------------------------------------------------------------------------------------------------------
+version: '3.7'
+
+services:
+  web:
+    build: ./questionnaire
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./questionnaire/:/usr/src/questionnaire/
+    ports:
+      - 8000:8000
+    env_file:
+      - ./.questionnaire-venv.dev
+---------------------------------------------------------------------------------------------------------------------------------------
+7.Create .questionnaire-venv.dev:
+nano .questionnaire-venv.dev
+---------------------------------------------------------------------------------------------------------------------------------------
+DEBUG=1
+SECRET_KEY=django-insecure-%v$90w^)1ku#9odog8(ucylew=1s5_f8=pzq+88ca8(93t)wzb
+DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
+---------------------------------------------------------------------------------------------------------------------------------------
+8. Build docker file:
+sudo docker-compose build
+And set up:
+sudo docker-compose up -d
+9. Create docker-compose.prod.yml:
+nano docker-compose.prod.yml
+---------------------------------------------------------------------------------------------------------------------------------------
+version: '3.7'
+
+services:
+  web:
+    build: ./questionnaire
+    command: gunicorn questionnaire.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - static_volume:/home/app/web/staticfiles
+    expose:
+      - 8000
+    env_file:
+      - ./.questionnaire-venv.prod
+  nginx:
+    build: ./nginx
+    ports:
+      - 1337:80
+    depends_on:
+      - web
+---------------------------------------------------------------------------------------------------------------------------------------
+10. Create .questionnaire-venv.prod:
+nano .questionnaire-venv.prod
+---------------------------------------------------------------------------------------------------------------------------------------
+DEBUG=0
+SECRET_KEY=django-insecure-%v$90w^)1ku#9odog8(ucylew=1s5_f8=pzq+88ca8(93t)wzb
+DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
+---------------------------------------------------------------------------------------------------------------------------------------
+11. Turn off previous docker:
+sudo docker-compose down -v
+And turn on new:
+sudo docker-compose -f docker-compose.prod.yml up -d --build
+12. Create config files for nginx:
+mkdir nginx
+cd nginx
+nano Dockerfile
+---------------------------------------------------------------------------------------------------------------------------------------
+FROM nginx:1.21-alpine
+
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d
+---------------------------------------------------------------------------------------------------------------------------------------
+nano nginx.conf
+---------------------------------------------------------------------------------------------------------------------------------------
+upstream questionnaire {
+    server web:8000;
+}
+
+server {
+
+    listen 80;
+
+    location / {
+        proxy_pass http://questionnaire;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_redirect off;
+    }
+
+    location /static/ {
+        alias /home/app/web/staticfiles/;
+    }
+
+}
+---------------------------------------------------------------------------------------------------------------------------------------

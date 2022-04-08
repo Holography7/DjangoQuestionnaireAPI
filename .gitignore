@@ -2,132 +2,99 @@
 *.log
 *.pot
 *.pyc
-__pycache__
-db.sqlite3
-media
+src/__pycache__
+src/db.sqlite3
+src/media
 
 # Backup files #
-*.bak
+src/*.bak
 
 # If you are using PyCharm #
 # User-specific stuff
 .idea
 
-# AWS User-specific
-.idea/**/aws.xml
-
-# Generated files
-.idea/**/contentModel.xml
-
-# Sensitive or high-churn files
-.idea/**/dataSources/
-.idea/**/dataSources.ids
-.idea/**/dataSources.local.xml
-.idea/**/sqlDataSources.xml
-.idea/**/dynamic.xml
-.idea/**/uiDesigner.xml
-.idea/**/dbnavigator.xml
-
-# Gradle
-.idea/**/gradle.xml
-.idea/**/libraries
-
 # File-based project format
-*.iws
+src/*.iws
 
 # IntelliJ
 out/
 
 # JIRA plugin
-atlassian-ide-plugin.xml
+src/atlassian-ide-plugin.xml
 
 # Python #
-*.py[cod]
-*$py.class
+src/*.py[cod]
+src/*$py.class
 
 # Distribution / packaging
-.Python build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-*.manifest
-*.spec
+src/.Python build/
+src/develop-eggs/
+src/dist/
+src/downloads/
+src/eggs/
+src/.eggs/
+src/lib/
+src/lib64/
+src/parts/
+src/sdist/
+src/var/
+src/wheels/
+src/*.egg-info/
+src/.installed.cfg
+src/*.egg
+src/*.manifest
+src/*.spec
 
 # Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+src/pip-log.txt
+src/pip-delete-this-directory.txt
 
 # Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-.pytest_cache/
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
+src/htmlcov/
+src/.tox/
+src/.coverage
+src/.coverage.*
+src/.cache
+src/.pytest_cache/
+src/nosetests.xml
+src/coverage.xml
+src/*.cover
+src/.hypothesis/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+src/.ipynb_checkpoints
 
 # pyenv
-.python-version
+src/.python-version
 
 # celery
-celerybeat-schedule.*
+src/celerybeat-schedule.*
 
 # SageMath parsed files
-*.sage.py
+src/*.sage.py
 
 # Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+src/.env
+src/.venv
+src/env/
+src/venv/
+src/ENV/
+src/env.bak/
+src/venv.bak/
+questionnaire-venv
 
 # mkdocs documentation
 /site
 
 # mypy
-.mypy_cache/
-
-# Sublime Text #
-*.tmlanguage.cache
-*.tmPreferences.cache
-*.stTheme.cache
-*.sublime-workspace
-*.sublime-project
+src/.mypy_cache/
 
 # sftp configuration file
-sftp-config.json
+src/sftp-config.json
 
 # Package control specific files Package
-Control.last-run
-Control.ca-list
-Control.ca-bundle
-Control.system-ca-bundle
-GitHub.sublime-settings
-
-# Visual Studio Code #
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-.history
+src/Control.last-run
+src/Control.ca-list
+src/Control.ca-bundle
+src/Control.system-ca-bundle
+src/GitHub.sublime-settings
