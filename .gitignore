@@ -5,6 +5,7 @@
 src/__pycache__
 src/db.sqlite3
 src/media
+.questionnaire-venv.prod
 
 # Backup files #
 src/*.bak
