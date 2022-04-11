@@ -2,11 +2,9 @@
 This article still writing
 ## How to deploy with docker:
 Install [Docker Engine](https://docs.docker.com/engine/install/) if it's not.
-Download rep:
-`git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git`
-
-Setup virtual enviroment and activate it:
+Download rep and setup virtual enviroment:
 ```
+git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git
 cd DjangoQuestionnaireAPI
 python3 -m venv questionnaire-venv
 source questionnaire-venv/bin/activate
@@ -17,26 +15,24 @@ cd src
 pip3 install -r requirements.txt
 ```
 Change SECRET_KEY in .questionnaire-venv.prod:
-`SECRET_KEY=your_secret_key`
+```SECRET_KEY=your_secret_key```
 
 Deploy:
 ```
 cd ..
 sudo docker-compose -f docker-compose.prod.yml up -d --build
-sudo docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput
-sudo docker-compose -f docker-compose.prod.yml exec web python manage.py loaddata questiontype.json
-sudo docker-compose -f docker-compose.prod.yml exec web python manage.py loaddata groups.json
-sudo docker-compose -f docker-compose.prod.yml exec web python manage.py createsuperuser
-sudo docker-compose -f docker-compose.prod.yml exec web python manage.py collectstatic --no-input --clear
 ```
-If you need down:
-`sudo docker-compose -f docker-compose.prod.yml down -v`
+Sadly, creating superuser not allowed through docker, so you should do this manually in other terminal:
+```
+cd path/to/your/project
+sudo docker-compose -f docker-compose.prod.yml exec python manage.py createsuperuser
+```
+If you need to down:
+```sudo docker-compose -f docker-compose.prod.yml down -v```
 ## How to deploy manually
-Download rep:
-`git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git`
-
-Setup virtual environment:
+Download rep and setup virtual enviroment:
 ```
+git clone https://github.com/Holography7/DjangoQuestionnaireAPI.git
 cd DjangoQuestionnaireAPI
 python3 -m venv questionnaire-venv
 source questionnaire-venv/bin/activate
@@ -56,7 +52,7 @@ DEBUG = False
 ALLOWED_HOSTS = ['example.com', ]
 ```
 Add enviroment variable SECRET_KEY:
-`export SECRET_KEY=your_secret_key`
+```export SECRET_KEY=your_secret_key```
 
 Make migrations:
 ```
@@ -70,10 +66,10 @@ python manage.py loaddata questiontype.json
 python manage.py loaddata groups.json
 ```
 Create superuser for your project:
-`python manage.py createsuperuser`
+```python manage.py createsuperuser```
 
 Create gunicorn config:
-`sudo nano /etc/systemd/system/gunicorn.service`
+```sudo nano /etc/systemd/system/gunicorn.service```
 
 And put next code:
 ```
@@ -101,7 +97,7 @@ sudo systemctl start gunicorn.service
 sudo systemctl status gunicorn.service
 ```
 If you get some trouble, you can see into journal:
-`journalctl -u gunicorn`
+```journalctl -u gunicorn```
 
 If you changed something, restart service:
 ```
@@ -109,10 +105,10 @@ sudo systemctl daemon-reload
 sudo systemctl restart gunicorn
 ```
 Setup Nginx:
-`sudo apt install nginx`
+```sudo apt install nginx```
 
 Create custom config:
-`sudo nano /etc/nginx/sites-available/questionnaire`
+```sudo nano /etc/nginx/sites-available/questionnaire```
 
 And put next code:
 ```
@@ -132,14 +128,12 @@ server {
 }
 ```
 **Dont't forget change domain and paths.**
-Create symlink to enable this file:
-`sudo ln -s /etc/nginx/sites-available/questionnaire /etc/nginx/sites-enabled`
-
-Test:
-`sudo nginx -t`
-
-Start:
-`sudo service nginx start`
+Create symlink to enable this file, test it and start:
+```
+sudo ln -s /etc/nginx/sites-available/questionnaire /etc/nginx/sites-enabled
+sudo nginx -t
+sudo service nginx start
+```
 
 If you need to restart or stop:
 ```
